@@ -1,0 +1,91 @@
+import wavio
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import keras.backend as K
+from sklearn.preprocessing import LabelEncoder
+from keras.utils import to_categorical
+from keras.models import Sequential
+from keras.layers.wrappers import TimeDistributed, Bidirectional
+from keras.layers.recurrent import LSTM
+from keras.layers import Dense, Activation, Input
+from keras.layers.advanced_activations import LeakyReLU
+
+
+def sliding_window(signal, length, stride):
+    (n_samples, n_channels) = signal.shape
+    result = []
+    
+    for t in range(n_samples):
+        step = stride*t
+        try:
+            window = signal[step: step +length, :]
+            result.append(window)
+        except IndexError:
+            if step < n_samples:
+                pad_length = n_samples - step
+                pad = np.zeros((int(pad_length), n_channels))
+                window = np.concatenate((signal[step:-1, :], pad), axis=0)
+                result.append(window)
+            break
+    result = np.dstack(result, axis=3)
+    return result
+                
+    
+
+def create_time_windows(signal, sampling_freq, time_window):
+    """
+    INPUTS:  signal -> np.array of size (n_samples, n_channels) containing interesting sequence
+             sampling_freq -> np.int that is Frequency used for sampling the signal in (samples/s or Hz)
+             time_window -> np.int that is the time length in seconds of the signal windows
+    """          
+    (n_samples, n_channels) = signal.shape
+    window_size = round(sampling_freq*time_window)
+    num_windows = round((n_samples/window_size))
+    pad_size = n_samples - num_windows*window_size
+    difference = abs(window_size - pad_size)
+    if difference < 100:
+        padding = np.zeros((int(pad_size), n_channels))
+        signal = np.concatenate((signal, padding), axis=0)
+        return np.dstack(np.array_split(signal, int(num_windows)))
+    else:
+        signal = signal[0:n_samples-int(pad_size),:]
+        return np.dstack(np.array_split(signal, int(num_windows)))
+    
+def windowize(sampling_freq, time_window):
+    df = pd.read_table("/home/asura/Downloads/acoustic_modelling/TUT-acoustic-scenes-2016-development.meta/TUT-acoustic-scenes-2016-development/meta.csv")
+    
+    result = []
+
+    for index, row in df.iterrows():
+        
+        #filename = row['name'].split('/')
+        signal = wavio.read(row['name'])
+        sig = create_time_windows(signal.data, sampling_freq, time_window)
+        
+        result.append(sig)
+        
+    result = np.stack(result, axis=3)    
+    result = np.swapaxes(result, 0, 3)
+    result = np.swapaxes(result, 1, 2)
+    result = np.swapaxes(result, 3, 2)
+    
+    return result
+
+def build_model(batch_size=30, windows=10, timesteps=120000, features=2):
+    
+    model = Sequential([
+        TimeDistributed(Bidirectional(LSTM(200, return_sequences=False, stateful=True), merge_mode='sum'), batch_input_shape=(batch_size, windows, timesteps, features)),
+        LSTM(300, return_sequences=False, stateful=True),
+        Dense(100, init='glorot_uniform'),
+        LeakyReLU(alpha=0.01),
+        Dense(15, init='glorot_uniform'),
+        Activation('softmax')
+    ])
+    
+    model.compile(optimizer='rmsprop',
+              loss='categorical_crossentropy',
+              metrics=['accuracy'])
+    
+    return model
+
