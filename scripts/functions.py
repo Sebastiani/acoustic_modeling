@@ -12,6 +12,7 @@ from keras.layers import Dense, Activation, Input
 from keras.layers.advanced_activations import LeakyReLU
 
 
+
 def sliding_window(signal, length, stride):
     (n_samples, n_channels) = signal.shape
     result = []
@@ -45,47 +46,56 @@ def create_time_windows(signal, sampling_freq, time_window):
     pad_size = n_samples - num_windows*window_size
     difference = abs(window_size - pad_size)
     if difference < 100:
+        
         padding = np.zeros((int(pad_size), n_channels))
         signal = np.concatenate((signal, padding), axis=0)
-        return np.dstack(np.array_split(signal, int(num_windows)))
+        print signal.shape
+        return np.vstack(np.array_split(signal, int(num_windows)))
     else:
         signal = signal[0:n_samples-int(pad_size),:]
-        return np.dstack(np.array_split(signal, int(num_windows)))
+        signal = np.array_split(signal, int(num_windows))
+        #print signal.shape
+        #print np.stack(signal, axis=0).shape
+        return np.stack(signal, axis=0)
     
-def windowize(sampling_freq, time_window):
-    df = pd.read_table("/home/asura/Downloads/acoustic_modelling/TUT-acoustic-scenes-2016-development.meta/TUT-acoustic-scenes-2016-development/meta.csv")
+def windowize(df, sampling_freq=44100, time_window=3):
+    result = np.array([])
     
-    result = []
-
     for index, row in df.iterrows():
-        
+        df = df.reindex(np.repeat(df.index.values, df['N']), method='ffill')
         #filename = row['name'].split('/')
-        signal = wavio.read(row['name'])
+        signal = wavio.read('../'+row['name'])
         sig = create_time_windows(signal.data, sampling_freq, time_window)
+        (n_labels,_,_) = sig.shape
         
-        result.append(sig)
-        
-    result = np.stack(result, axis=3)    
-    result = np.swapaxes(result, 0, 3)
-    result = np.swapaxes(result, 1, 2)
-    result = np.swapaxes(result, 3, 2)
+        #print sig.shape
+        #sig = sliding_window(signal.data, 10000, 2000)
+        if result.size == 0:
+            result = sig
+        else:
+            result = np.concatenate((result, sig), axis=0)
+    #result = np.stack(result, axis=2)    
+    #result = np.swapaxes(result, 0,1)
+    #result = np.swapaxes(result, 0, 3)
+    #result = np.swapaxes(result, 1, 2)
+    #result = np.swapaxes(result, 3, 2)
     
-    return result
+    return (result, n_results)
 
 def build_model(batch_size=30, windows=10, timesteps=120000, features=2):
     
     model = Sequential([
-        TimeDistributed(Bidirectional(LSTM(200, return_sequences=False, stateful=True), merge_mode='sum'), batch_input_shape=(batch_size, windows, timesteps, features)),
-        LSTM(300, return_sequences=False, stateful=True),
-        Dense(100, init='glorot_uniform'),
+        Bidirectional(LSTM(100, return_sequences=True, stateful=True), merge_mode='sum', batch_input_shape=(batch_size, timesteps, features)),
+        LSTM(50, return_sequences=False, stateful=True),
+        Dense(30, kernel_initializer='glorot_uniform'),
         LeakyReLU(alpha=0.01),
-        Dense(15, init='glorot_uniform'),
+        Dense(15, kernel_initializer='glorot_uniform'),
         Activation('softmax')
     ])
-    
+
     model.compile(optimizer='rmsprop',
               loss='categorical_crossentropy',
-              metrics=['accuracy'])
+              metrics=['accuracy', 'top_k_categorical_accuracy'])
     
     return model
 

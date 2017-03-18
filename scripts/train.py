@@ -24,18 +24,25 @@ msk = np.random.rand(len(df)) < 0.8
 train_meta = metadata[msk]
 test_meta = metadata[~msk]
 
-train = windowize(train_meta)
+
+(train, n) = windowize(train_meta)
+train_meta = train_meta.reindex(np.repeat(df.index.values, n), method='ffill')
 
 train_labels_num = le.transform(np.squeeze([train_meta['class']]))
 train_labels = to_categorical(train_labels_num, num_classes=15)
 
 test = windowize(test_meta)
+test_meta = test_meta.reindex(np.repeat(df.index.values, n), method='ffill')
 
 test_labels_num = le.transform(np.squeeze([test_meta['class']]))
 test_labels = to_categorical(test_labels_num, num_classes=15)
 
+del metadata
+del train_meta
+del test_meta
+
 batch_size = 10
-(n_samples, windows, timesteps, features) = train.shape
+(n_samples, timesteps, features) = train.shape
 
 model = build_model(batch_input_shape, windows, timesteps, features)
 model.summary()
@@ -43,7 +50,6 @@ model.summary()
 tensorboard = TensorBoard(log_dir='./logs', histogram_freq=10, write_graph=True, write_images=True)
 
  model.fit(train, train_labels, epochs=50, batch_size=10,
-                  validation_split=0.05,
                   callbacks=[tensorboard])
 
  scores = model.evaluate(test, test_labels)
