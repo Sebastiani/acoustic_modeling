@@ -1,7 +1,6 @@
 import wavio
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 import keras.backend as K
 from sklearn.preprocessing import LabelEncoder
 from keras.utils import to_categorical
@@ -62,11 +61,11 @@ def windowize(df, sampling_freq=44100, time_window=3):
     result = np.array([])
     
     for index, row in df.iterrows():
-        df = df.reindex(np.repeat(df.index.values, df['N']), method='ffill')
+        
         #filename = row['name'].split('/')
         signal = wavio.read('../'+row['name'])
         sig = create_time_windows(signal.data, sampling_freq, time_window)
-        (n_labels,_,_) = sig.shape
+        (n_windows,_,_) = sig.shape
         
         #print sig.shape
         #sig = sliding_window(signal.data, 10000, 2000)
@@ -80,12 +79,12 @@ def windowize(df, sampling_freq=44100, time_window=3):
     #result = np.swapaxes(result, 1, 2)
     #result = np.swapaxes(result, 3, 2)
     
-    return (result, n_results)
+    return (result, n_windows)
 
-def build_model(batch_size=30, windows=10, timesteps=120000, features=2):
+def build_model(batch_size=30,  timesteps=120000, features=2):
     
     model = Sequential([
-        Bidirectional(LSTM(100, return_sequences=True, stateful=True), merge_mode='sum', batch_input_shape=(batch_size, timesteps, features)),
+        Bidirectional(LSTM(60, return_sequences=True, stateful=True), merge_mode='sum', batch_input_shape=(batch_size, timesteps, features)),
         LSTM(50, return_sequences=False, stateful=True),
         Dense(30, kernel_initializer='glorot_uniform'),
         LeakyReLU(alpha=0.01),
